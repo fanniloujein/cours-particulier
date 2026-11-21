@@ -11,7 +11,7 @@ Les élèves n'ont pas de compte. Toutes les pages et toutes les API sont proté
 Il faut **Node.js 20+** et **PostgreSQL 14+**.
 
 ```bash
-cd tutoring-manager
+cd cours-particulier
 npm install
 cp .env.example .env      # puis renseigner DATABASE_URL et AUTH_SECRET
 ```
@@ -52,7 +52,7 @@ docker run -d --name tutoring-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tu
 ### Déploiement (Render, Railway, VPS…)
 
 1. Créer une base PostgreSQL.
-2. *Build* : `npm install && npm run build` · *Start* : `npm start` (répertoire racine : `tutoring-manager`).
+2. *Build* : `npm install && npm run build` · *Start* : `npm start`.
 3. Renseigner `DATABASE_URL`, `AUTH_SECRET`, `APP_TIMEZONE=Africa/Tunis`.
 4. Servir en HTTPS (le cookie de session est `Secure` en production), puis ouvrir `/setup`.
 
