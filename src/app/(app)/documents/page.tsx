@@ -3,6 +3,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Download, ExternalLink, FileImage, FileSpreadsheet, FileText, FolderOpen, Link2, Search, Trash2, Upload } from "lucide-react";
 import { api, fullName, qsOf, useApi } from "@/lib/client";
+import { uploadDocument } from "@/lib/upload";
 import { DOCUMENT_TYPES } from "@/lib/constants";
 import { shortDate } from "@/lib/dates";
 import type { Chapter, DocumentRow } from "@/lib/types";
@@ -72,14 +73,19 @@ function UploadDialog({ chapters, defaults, onClose }: { chapters: Chapter[]; de
   const [v, setV] = useState({ name: "", url: "", type: "", tags: "", studentId: defaults.studentId, subjectId: defaults.subjectId, levelId: defaults.levelId, chapterId: defaults.chapterId });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
   const save = async () => {
+    setProgress(0);
     setBusy(true);
     setErr(null);
-    const fd = new FormData();
-    if (file) fd.set("file", file);
-    Object.entries(v).forEach(([k, x]) => x && fd.set(k, x));
     try {
-      await api("/api/documents", { form: fd });
+      const { url, ...meta } = v;
+      if (file) await uploadDocument(file, meta, setProgress);
+      else {
+        const fd = new FormData();
+        Object.entries({ ...meta, url }).forEach(([k, x]) => x && fd.set(k, x));
+        await api("/api/documents", { form: fd });
+      }
       toast.success("Document ajouté.");
       onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : "Erreur"); } finally { setBusy(false); }
@@ -97,6 +103,7 @@ function UploadDialog({ chapters, defaults, onClose }: { chapters: Chapter[]; de
         <Field label="Chapitre"><Select value={v.chapterId} onChange={(e) => setV({ ...v, chapterId: e.target.value })} options={chapters.map((c) => ({ value: c.id, label: `${c.subject.name} · ${c.title}` }))} placeholder="—" /></Field>
         <Field label="Mots-clés" className="sm:col-span-2"><Input value={v.tags} onChange={(e) => setV({ ...v, tags: e.target.value })} placeholder="révision, trimestre 1…" /></Field>
       </div>
+      {busy && file && <div className="mt-3 h-2 rounded-full bg-surface-2"><div className="h-2 rounded-full bg-primary-strong transition-all" style={{ width: `${Math.round(progress * 100)}%` }} /></div>}
       {err && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{err}</p>}
     </Dialog>
   );

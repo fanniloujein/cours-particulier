@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { route, qs, fail } from "@/lib/api";
+import { z } from "zod";
+import { route, qs, fail, body } from "@/lib/api";
 
 const MAX = 10 * 1024 * 1024; // 10 Mo par fichier
 const ALLOWED = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|application\/vnd\.ms-excel|application\/vnd\.oasis\.opendocument\.(text|spreadsheet)|image\/(png|jpeg|gif|webp)|text\/plain)$/;
@@ -37,8 +38,30 @@ export const GET = route(async ({ req }) => {
   });
 });
 
-// Envoi multipart : file (facultatif si url), name, type, tags, studentId, subjectId, levelId, chapterId, lessonId
+const opt = z.string().optional().nullable().transform((v) => (v ? v : null));
+const initSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  mimeType: z.string().max(200),
+  size: z.number().int().min(1, "Fichier vide.").max(MAX, "Fichier trop volumineux (10 Mo maximum)."),
+  type: opt, tags: opt, studentId: opt, subjectId: opt, levelId: opt, chapterId: opt, lessonId: opt,
+});
+
+/**
+ * Deux modes :
+ *  - JSON : début d'un envoi de fichier en plusieurs morceaux (voir /api/documents/[id]/chunk).
+ *    Les hébergeurs serverless (Netlify, Vercel) limitent une requête à ~4,5–6 Mo.
+ *  - multipart : lien externe (ou petit fichier) en une seule requête.
+ */
 export const POST = route(async ({ req }) => {
+  if (req.headers.get("content-type")?.includes("application/json")) {
+    const v = await body(req, initSchema);
+    if (!ALLOWED.test(v.mimeType)) fail(415, "Format non accepté. Formats : PDF, Word, Excel, PowerPoint, images, texte.");
+    return prisma.document.create({
+      data: { ...v, type: v.type || guessType(v.mimeType, v.name), data: new Uint8Array(0) },
+      select: { id: true, name: true },
+    });
+  }
+  // Envoi multipart : file (facultatif si url), name, type, tags, studentId, subjectId, levelId, chapterId, lessonId
   const form = await req.formData();
   const file = form.get("file");
   const url = String(form.get("url") ?? "").trim() || null;

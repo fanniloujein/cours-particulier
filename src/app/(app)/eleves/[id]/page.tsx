@@ -4,6 +4,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ArchiveRestore, ArrowLeft, Ban, CalendarPlus, FileDown, FileText, Pencil, Phone, Plus, Trash2, Upload, Wallet } from "lucide-react";
 import { api, fullName, refreshAll, useApi } from "@/lib/client";
+import { uploadDocument } from "@/lib/upload";
 import { ASSESSMENT_KINDS, DOCUMENT_TYPES, PAYMENT_KINDS, PAYMENT_METHODS, PROGRESS_STATUS, SESSION_STATUS } from "@/lib/constants";
 import { BILLING_MODES } from "@/lib/finance";
 import { formatDT } from "@/lib/money";
@@ -408,11 +409,8 @@ function DocsTab({ s, reload }: { s: Detail; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const upload = async (file: File) => {
     setBusy(true);
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("studentId", s.id);
     try {
-      await api("/api/documents", { form: fd });
+      await uploadDocument(file, { studentId: s.id });
       toast.success("Document ajouté.");
       reload();
     } catch (e) {

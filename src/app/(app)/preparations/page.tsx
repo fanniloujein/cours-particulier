@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BookOpen, ChevronRight, ExternalLink, FileText, FolderPlus, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { api, cn, fullName, qsOf, refreshAll, useApi } from "@/lib/client";
+import { uploadDocument } from "@/lib/upload";
 import { DOCUMENT_TYPES } from "@/lib/constants";
 import { shortDate } from "@/lib/dates";
 import type { Chapter } from "@/lib/types";
@@ -165,14 +166,8 @@ function LessonEditor({ id, onDeleted, onSaved }: { id: string; onDeleted: () =>
     onDeleted();
   };
   const upload = async (file: File) => {
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("lessonId", id);
-    fd.set("chapterId", l.chapterId);
-    fd.set("subjectId", l.chapter.subject.id);
-    if (l.chapter.levelId) fd.set("levelId", l.chapter.levelId);
     try {
-      await api("/api/documents", { form: fd });
+      await uploadDocument(file, { lessonId: id, chapterId: l.chapterId, subjectId: l.chapter.subject.id, levelId: l.chapter.levelId });
       toast.success("Document ajouté à la leçon.");
       mutate();
     } catch (e) {
