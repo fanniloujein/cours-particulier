@@ -2,16 +2,16 @@
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, ArchiveRestore, ArrowLeft, Ban, CalendarPlus, FileDown, FileText, Pencil, Phone, Plus, Trash2, Upload, Wallet } from "lucide-react";
-import { api, fullName, refreshAll, useApi } from "@/lib/client";
+import { Archive, ArchiveRestore, ArrowLeft, Ban, CalendarPlus, CheckCircle2, FileDown, FileText, Pencil, Phone, Plus, RotateCcw, Trash2, Upload, UserX, Wallet } from "lucide-react";
+import { api, cn, fullName, refreshAll, useApi } from "@/lib/client";
 import { uploadDocument } from "@/lib/upload";
-import { ASSESSMENT_KINDS, DOCUMENT_TYPES, PAYMENT_KINDS, PAYMENT_METHODS, PROGRESS_STATUS, SESSION_STATUS } from "@/lib/constants";
+import { ASSESSMENT_KINDS, DOCUMENT_TYPES, PAYMENT_KINDS, PAYMENT_METHODS, PROGRESS_STATUS } from "@/lib/constants";
 import { BILLING_MODES } from "@/lib/finance";
 import { formatDT } from "@/lib/money";
-import { duration, formatMinutes, monthLabel, monthOf, shortDate, today, weekdayName, weekday } from "@/lib/dates";
+import { dayName, duration, formatMinutes, monthLabel, monthOf, shortDate, today, weekdayName, weekday } from "@/lib/dates";
 import type { Chapter, Finance, Homework, Invoice, Package, Payment, Refund, Session, Student, Tx } from "@/lib/types";
 import { Avatar, Badge, Button, Dialog, Empty, ErrorBox, Field, Input, Loading, Select, Tabs, Textarea, useConfirm, useToast, Pager, usePager } from "@/components/ui";
-import { Money, StatusBadge, TxBadge, useRefs } from "@/components/shared";
+import { Money, StatusBadge, SubjectDot, TxBadge, useRefs } from "@/components/shared";
 import { StudentForm } from "@/components/StudentForm";
 import { SessionForm } from "@/components/SessionForm";
 import { SessionDetail } from "@/components/SessionDetail";
@@ -63,6 +63,7 @@ export default function StudentPage({ params }: { params: Promise<{ id: string }
   if (error) return <ErrorBox error={error} retry={() => mutate()} />;
   if (!s) return <Loading rows={6} />;
   const f = s.finance;
+  const toMark = s.sessions.filter((x) => isUnmarked(x, today(), new Date().toTimeString().slice(0, 5))).length;
 
   const archive = async () => {
     await api(`/api/students/${id}`, { method: "PATCH", body: { archived: !s.archived } });
@@ -93,6 +94,7 @@ export default function StudentPage({ params }: { params: Promise<{ id: string }
             {s.isDemo && <Badge>démo</Badge>}
             {f.alert === "INSUFFICIENT" && <Badge tone="danger">Avance insuffisante</Badge>}
             {f.alert === "LOW" && <Badge tone="warning">Crédit presque épuisé</Badge>}
+            {toMark > 0 && <button onClick={() => setTab("seances")}><Badge tone="warning">{toMark} séance(s) réalisée(s) à pointer</Badge></button>}
           </div>
           <div className="mt-0.5 text-sm text-muted">{[s.level?.name, s.school, s.courseType === "GROUP" ? "Cours collectif" : "Cours individuel"].filter(Boolean).join(" · ")}</div>
           <div className="mt-1.5 flex flex-wrap gap-1">{s.subjects.map((x) => <span key={x.id} className="chip text-navy" style={{ background: x.color }}>{x.name}</span>)}</div>
@@ -144,7 +146,7 @@ export default function StudentPage({ params }: { params: Promise<{ id: string }
         <Tabs tabs={TABS.map((t) => ({ ...t, count: t.value === "seances" ? s.sessions.length : t.value === "documents" ? s.documents.length : t.value === "paiements" ? s.payments.filter((p) => p.kind !== "ADVANCE").length : t.value === "avances" ? s.payments.filter((p) => p.kind === "ADVANCE").length : undefined }))} value={tab} onChange={setTab} />
         {tab === "infos" && <InfoTab s={s} />}
         {tab === "planning" && <PlanningTab s={s} onOpen={setOpenSession} onNew={() => setNewSession(true)} />}
-        {tab === "seances" && <SessionsTab s={s} onOpen={setOpenSession} />}
+        {tab === "seances" && <SessionsTab s={s} onOpen={setOpenSession} reload={mutate} />}
         {tab === "suivi" && <FollowTab s={s} reload={mutate} />}
         {tab === "documents" && <DocsTab s={s} reload={mutate} />}
         {tab === "historique" && <HistoryTab s={s} />}
@@ -238,32 +240,103 @@ function PlanningTab({ s, onOpen, onNew }: { s: Detail; onOpen: (id: string) => 
   );
 }
 
-function SessionsTab({ s, onOpen }: { s: Detail; onOpen: (id: string) => void }) {
-  const [status, setStatus] = useState("");
-  const list = s.sessions.filter((x) => !status || x.status === status);
-  const pager = usePager(list, 20);
+type SFilter = "todo" | "upcoming" | "done" | "other" | "all";
+
+/** Séances passées encore « prévues » : réalisées mais pas encore pointées. */
+const isUnmarked = (x: { status: string; date: string; endTime: string }, t: string, now: string) => x.status === "PLANNED" && (x.date < t || (x.date === t && x.endTime <= now));
+
+function SessionsTab({ s, onOpen, reload }: { s: Detail; onOpen: (id: string) => void; reload: () => void }) {
+  const toast = useToast();
+  const t = today();
+  const now = new Date().toTimeString().slice(0, 5);
+  const unmarked = s.sessions.filter((x) => isUnmarked(x, t, now));
+  const upcoming = s.sessions.filter((x) => x.status === "PLANNED" && !isUnmarked(x, t, now));
   const done = s.sessions.filter((x) => x.status === "DONE" && !x.absent);
+  const other = s.sessions.filter((x) => !["PLANNED", "DONE"].includes(x.status) || (x.status === "DONE" && x.absent));
+  const [filter, setFilter] = useState<SFilter>(unmarked.length ? "todo" : "all");
+  const [subjectId, setSubjectId] = useState("");
+  const [sel, setSel] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const sets = { todo: unmarked, upcoming, done, other, all: s.sessions };
+  const list = sets[filter]
+    .filter((x) => !subjectId || x.subjectId === subjectId)
+    .sort((a, b) => (filter === "todo" || filter === "upcoming" ? (a.date + a.startTime < b.date + b.startTime ? -1 : 1) : a.date + a.startTime > b.date + b.startTime ? -1 : 1));
+  const pager = usePager(list, 25);
+  const subjects = [...new Map(s.sessions.filter((x) => x.subject).map((x) => [x.subject!.id, x.subject!])).values()];
+  const markable = list.filter((x) => x.status === "PLANNED");
+
+  const setStatus = async (ids: string[], status: "DONE" | "PLANNED" | "STUDENT_ABSENT") => {
+    if (!ids.length) return;
+    setBusy(true);
+    try {
+      await api("/api/sessions/bulk", { body: { ids, action: "status", status } });
+      toast.success(status === "DONE" ? `${ids.length} séance(s) marquée(s) effectuée(s) et facturée(s) selon le mode de l'élève.` : status === "STUDENT_ABSENT" ? "Absence enregistrée." : "Séance remise en « prévue ».");
+      setSel([]);
+      reload();
+      refreshAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chip = (k: SFilter, label: string, n: number, tone: string) => (
+    <button onClick={() => { setFilter(k); setSel([]); }} className={cn("rounded-2xl border px-3 py-2 text-left transition", filter === k ? "border-primary-strong bg-primary-soft/60" : "border-line hover:bg-surface-2/60")}>
+      <div className={cn("font-display text-lg font-semibold tabular-nums", tone)}>{n}</div>
+      <div className="text-xs text-muted">{label}</div>
+    </button>
+  );
+
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-muted">{done.length} séance(s) effectuée(s) · {formatMinutes(done.reduce((a, x) => a + duration(x.startTime, x.endTime), 0))} de cours</div>
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} options={Object.fromEntries(Object.entries(SESSION_STATUS).map(([k, v]) => [k, v.label]))} placeholder="Tous les statuts" className="w-auto" />
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {chip("todo", "Réalisées, à pointer", unmarked.length, unmarked.length ? "text-warning" : "")}
+        {chip("upcoming", "À venir", upcoming.length, "text-primary-strong")}
+        {chip("done", `Effectuées · ${formatMinutes(done.reduce((a, x) => a + duration(x.startTime, x.endTime), 0))}`, done.length, "text-success")}
+        {chip("other", "Annulées, reportées, absences", other.length, "")}
+        {chip("all", "Toutes les séances", s.sessions.length, "")}
       </div>
-      {list.length === 0 ? <Empty title="Aucune séance" /> : (
+
+      <div className="flex flex-wrap items-center gap-2">
+        {subjects.length > 1 && <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} options={subjects.map((x) => ({ value: x.id, label: x.name }))} placeholder="Toutes les matières" className="w-auto" />}
+        {markable.length > 0 && (
+          <>
+            <Button size="sm" variant="secondary" onClick={() => setSel(sel.length === markable.length ? [] : markable.map((x) => x.id))}>{sel.length === markable.length ? "Tout décocher" : "Tout cocher"}</Button>
+            <Button size="sm" variant="success" disabled={!sel.length} loading={busy} onClick={() => setStatus(sel, "DONE")}><CheckCircle2 className="h-4 w-4" />Marquer effectuée(s) ({sel.length})</Button>
+          </>
+        )}
+        {filter === "todo" && unmarked.length > 0 && <span className="text-xs text-muted">Ces séances sont passées mais encore « prévues » : pointez-les pour les facturer et mettre à jour le suivi.</span>}
+      </div>
+
+      {list.length === 0 ? (
+        <Empty title={filter === "todo" ? "Toutes les séances réalisées sont pointées ✔" : "Aucune séance"} />
+      ) : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Date</th><th>Horaire</th><th>Matière / chapitre</th><th>Statut</th><th className="num">Tarif</th><th>Facture</th></tr></thead>
+            <thead><tr><th className="w-8"></th><th>Date</th><th>Horaire</th><th>Matière / chapitre</th><th>Statut</th><th className="num">Tarif</th><th>Facture</th><th className="text-right">Action</th></tr></thead>
             <tbody>
               {pager.slice.map((x) => {
                 const inv = s.invoices.find((i) => i.sessionId === x.id && !i.voidedAt);
+                const late = isUnmarked(x, t, now);
                 return (
-                  <tr key={x.id} className="cursor-pointer" onClick={() => onOpen(x.id)}>
-                    <td className="whitespace-nowrap">{shortDate(x.date)}</td>
+                  <tr key={x.id} className={cn("cursor-pointer", late && "bg-warning-soft/30")} onClick={() => onOpen(x.id)}>
+                    <td onClick={(e) => e.stopPropagation()}>{x.status === "PLANNED" && <input type="checkbox" className="h-4 w-4" checked={sel.includes(x.id)} onChange={(e) => setSel(e.target.checked ? [...sel, x.id] : sel.filter((y) => y !== x.id))} aria-label="Sélectionner" />}</td>
+                    <td className="whitespace-nowrap"><span className="capitalize text-muted">{dayName(x.date).slice(0, 3)}.</span> {shortDate(x.date)}</td>
                     <td className="tabular-nums">{x.startTime}–{x.endTime}</td>
-                    <td><div>{x.subject?.name ?? "—"}</div>{x.chapter && <div className="text-xs text-muted">{x.chapter}</div>}</td>
-                    <td><StatusBadge status={x.status} />{x.absent && <Badge tone="danger" className="ml-1">absent</Badge>}</td>
+                    <td><div className="inline-flex items-center gap-1.5"><SubjectDot color={x.subject?.color} />{x.subject?.name ?? "—"}</div>{x.chapter && <div className="text-xs text-muted">{x.chapter}</div>}{x.report && <div className="max-w-xs truncate text-xs text-ink-2">📝 {x.report}</div>}</td>
+                    <td>{late ? <Badge tone="warning">À pointer</Badge> : <StatusBadge status={x.status} />}{x.absent && <Badge tone="danger" className="ml-1">absent</Badge>}</td>
                     <td className="num">{formatDT(Number(x.price))}</td>
                     <td>{inv ? <Badge tone={inv.state?.status === "PAID" ? "success" : inv.state?.status === "PARTIAL" ? "warning" : "danger"}>{inv.state?.status === "PAID" ? "Payée" : inv.state?.status === "PARTIAL" ? "Partielle" : "Due"}</Badge> : <span className="text-xs text-muted">{s.billingMode === "MONTHLY" && x.status === "DONE" ? "forfait" : "—"}</span>}</td>
+                    <td className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                      {x.status === "PLANNED" && (
+                        <>
+                          <Button size="sm" variant="soft" disabled={busy} onClick={() => setStatus([x.id], "DONE")}><CheckCircle2 className="h-4 w-4" />Effectuée</Button>
+                          {late && <Button size="sm" variant="ghost" disabled={busy} onClick={() => setStatus([x.id], "STUDENT_ABSENT")} title="L'élève était absent"><UserX className="h-4 w-4" /></Button>}
+                        </>
+                      )}
+                      {x.status === "DONE" && <Button size="icon-sm" variant="ghost" disabled={busy} title="Remettre en « prévue »" onClick={() => setStatus([x.id], "PLANNED")}><RotateCcw className="h-4 w-4" /></Button>}
+                    </td>
                   </tr>
                 );
               })}

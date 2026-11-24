@@ -51,6 +51,7 @@ export default function StudentsPage() {
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-ink group-hover:underline">{fullName(s)}</span>
                     {s.isDemo && <Badge>démo</Badge>}
+                    {!!s.toMark && <Badge tone="warning">{s.toMark} à pointer</Badge>}
                   </div>
                   <div className="truncate text-xs text-muted">{s.level?.name ?? "Niveau non renseigné"}{s.school ? ` · ${s.school}` : ""}</div>
                   <div className="mt-1.5 flex flex-wrap gap-1">

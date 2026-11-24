@@ -37,6 +37,9 @@ export const GET = route(async ({ req }) => {
     const k = `${n.session.date} ${n.session.startTime}`;
     if (!nextBy.has(n.studentId) || k < nextBy.get(n.studentId)!) nextBy.set(n.studentId, k);
   }
+  // Séances passées encore « prévues » (réalisées mais pas pointées)
+  const unmarked = await prisma.sessionParticipant.groupBy({ by: ["studentId"], where: { studentId: { in: ids }, session: { status: "PLANNED", date: { lt: today() } } }, _count: true });
+  const unmarkedBy = new Map(unmarked.map((u) => [u.studentId, u._count]));
   const parents = await prisma.parent.findMany({ where: { students: { some: { id: { in: ids } } } } });
   const pm = new Map(parents.map((x) => [x.id, x]));
   return rows.map(({ student: s, finance: f }) => ({
@@ -45,6 +48,7 @@ export const GET = route(async ({ req }) => {
     parent: s.parentId ? pm.get(s.parentId) ?? null : null,
     subjects: s.subjects.map((x) => x.subject),
     nextSession: nextBy.get(s.id) ?? null,
+    toMark: unmarkedBy.get(s.id) ?? 0,
     finance: { ...f, ledger: undefined },
   }));
 });

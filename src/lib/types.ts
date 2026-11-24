@@ -14,7 +14,7 @@ export type Student = StudentLite & {
   phone: string | null; address: string | null; school: string | null; levelId: string | null; level: Level | null; parent: Parent | null; parentId: string | null;
   subjects: Subject[]; enrolledAt: string; courseType: string; rate: number; sessionDuration: number; sessionsPerWeek: number; billingMode: string;
   availability: string | null; notes: string | null; strengths: string | null; weaknesses: string | null; difficulties: string | null; goals: string | null;
-  archived: boolean; isDemo: boolean; finance: Finance; nextSession?: string | null;
+  archived: boolean; isDemo: boolean; finance: Finance; nextSession?: string | null; toMark?: number;
 };
 
 export type Participant = { studentId: string; price: number; absent: boolean; student: StudentLite };
