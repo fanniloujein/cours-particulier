@@ -3,6 +3,7 @@ export const ar: Partial<Record<keyof typeof fr, string>> = {
   "nav.dashboard": "لوحة القيادة",
   "nav.students": "التلاميذ",
   "nav.sessions": "الحصص",
+  "nav.done": "الحصص المنجزة",
   "nav.calendar": "الرزنامة",
   "nav.week": "تنظيم أسبوعي",
   "nav.finance": "المالية",

@@ -2,6 +2,7 @@ export const fr = {
   "nav.dashboard": "Tableau de bord",
   "nav.students": "Élèves",
   "nav.sessions": "Séances",
+  "nav.done": "Séances effectuées",
   "nav.calendar": "Calendrier",
   "nav.week": "Organiser ma semaine",
   "nav.finance": "Finances",

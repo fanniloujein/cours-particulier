@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Bell, BookOpen, CalendarDays, CalendarRange, ChartPie, ClipboardList, Clock, FileText, FolderOpen, GraduationCap, LayoutDashboard,
+  Bell, BookOpen, CalendarCheck, CalendarDays, CalendarRange, ChartPie, ClipboardList, Clock, FileText, FolderOpen, GraduationCap, LayoutDashboard,
   ListChecks, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, ReceiptText, Settings, Shapes, Sun, SunMoon, Users, Wallet, X, Plus,
 } from "lucide-react";
 import { api, cn, useApi } from "@/lib/client";
@@ -20,6 +20,7 @@ const NAV: { group: keyof Messages; items: Item[] }[] = [
       { href: "/", key: "nav.dashboard", icon: LayoutDashboard },
       { href: "/eleves", key: "nav.students", icon: Users },
       { href: "/seances", key: "nav.sessions", icon: ClipboardList },
+      { href: "/seances-effectuees", key: "nav.done", icon: CalendarCheck },
       { href: "/calendrier", key: "nav.calendar", icon: CalendarDays },
       { href: "/semaine", key: "nav.week", icon: CalendarRange },
     ],
@@ -52,7 +53,7 @@ const NAV: { group: keyof Messages; items: Item[] }[] = [
   },
 ];
 
-const isActive = (path: string, href: string) => (href === "/" ? path === "/" : href === "/finances" ? path === "/finances" : path === href || path.startsWith(`${href}/`));
+const isActive = (path: string, href: string) => (href === "/" || href === "/finances" || href === "/seances" ? path === href : path === href || path.startsWith(`${href}/`));
 
 export function AppShell({ children, appName }: { children: ReactNode; appName: string }) {
   const path = usePathname();

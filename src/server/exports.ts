@@ -2,6 +2,7 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import ExcelJS from "exceljs";
+import type { SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/auth";
 import { readSettings } from "@/lib/settings";
@@ -147,7 +148,8 @@ export async function buildExport(dataset: string, p: URLSearchParams) {
     rows.push({ name: "TOTAL", level: "", sessionsDone: "", billed: ov.totals.billed, paid: ov.totals.paid, advances: "", credit: ov.totals.credit, due: ov.totals.due });
   } else if (dataset === "sessions") {
     title = "Séances";
-    const items = await prisma.session.findMany({ where: { date, ...(studentId ? { participants: { some: { studentId } } } : {}) }, include: { participants: { include: { student: true } }, subject: true }, orderBy: [{ date: "asc" }, { startTime: "asc" }] });
+    const status = p.get("status") as SessionStatus | null, subjectId = p.get("subjectId");
+    const items = await prisma.session.findMany({ where: { date, ...(status ? { status } : {}), ...(subjectId ? { subjectId } : {}), ...(studentId ? { participants: { some: { studentId } } } : {}) }, include: { participants: { include: { student: true } }, subject: true }, orderBy: [{ date: "asc" }, { startTime: "asc" }] });
     const { SESSION_STATUS } = await import("@/lib/constants");
     cols = [
       { header: "Date", key: "date", width: 12 },
